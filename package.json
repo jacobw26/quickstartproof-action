@@ -1,6 +1,6 @@
 {
   "name": "quickstartproof-action",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Static cURL/OpenAPI consistency checks for one repository quickstart.",
   "private": true,
   "license": "MIT",

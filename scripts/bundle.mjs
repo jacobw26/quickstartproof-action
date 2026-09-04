@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-const names = ["limits", "yaml", "markdown", "openapi", "evidence", "matcher", "renderer", "paths", "core", "index"];
+const names = ["limits", "yaml", "markdown", "openapi", "evidence", "matcher", "renderer", "commands", "paths", "core", "index"];
 
 export async function createBundle(root) {
   const factories = [];

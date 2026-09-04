@@ -15,10 +15,14 @@ function clean(value, maximum = MAX_MESSAGE_LENGTH) {
   return redactSecrets(value).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maximum);
 }
 
+function cleanPath(value) {
+  return redactSecrets(value).replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 240);
+}
+
 class EvidenceLedger {
   constructor(quickstartPath, openapiPath) {
-    this.quickstartPath = clean(quickstartPath, 240);
-    this.openapiPath = clean(openapiPath, 240);
+    this.quickstartPath = cleanPath(quickstartPath);
+    this.openapiPath = cleanPath(openapiPath);
     this.items = [];
     this.truncated = false;
   }

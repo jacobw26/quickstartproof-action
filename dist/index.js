@@ -8,6 +8,9 @@
 module.exports = Object.freeze({
   MAX_QUICKSTART_BYTES: 512_000,
   MAX_OPENAPI_BYTES: 2_000_000,
+  MAX_DISCOVERY_DEPTH: 8,
+  MAX_DISCOVERY_ENTRIES: 10_000,
+  MAX_DISCOVERY_FILES: 5_000,
   MAX_STEPS: 10,
   MAX_SNIPPETS: 3,
   MAX_FINDINGS: 40,
@@ -727,10 +730,14 @@ function clean(value, maximum = MAX_MESSAGE_LENGTH) {
   return redactSecrets(value).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maximum);
 }
 
+function cleanPath(value) {
+  return redactSecrets(value).replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 240);
+}
+
 class EvidenceLedger {
   constructor(quickstartPath, openapiPath) {
-    this.quickstartPath = clean(quickstartPath, 240);
-    this.openapiPath = clean(openapiPath, 240);
+    this.quickstartPath = cleanPath(quickstartPath);
+    this.openapiPath = cleanPath(openapiPath);
     this.items = [];
     this.truncated = false;
   }
@@ -1016,12 +1023,55 @@ function renderMarkdown(result, repository = "", sha = "") {
 module.exports = { renderMarkdown, escapeTable, repositoryLink };
 
 },
+"./commands": function(module, exports, require) {
+"use strict";
+
+function escapeCommandData(value) {
+  return String(value ?? "")
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A");
+}
+
+function escapeCommandProperty(value) {
+  return escapeCommandData(value)
+    .replace(/:/g, "%3A")
+    .replace(/,/g, "%2C");
+}
+
+function warningAnnotation(item) {
+  if (item?.kind !== "mismatch" || !["observed", "inferred"].includes(item.conclusion)) return null;
+  if (!item.source || typeof item.source.file !== "string" || !Number.isInteger(item.source.line) || item.source.line < 1) return null;
+  const properties = [
+    `file=${escapeCommandProperty(item.source.file)}`,
+    `line=${item.source.line}`,
+    `title=${escapeCommandProperty(`QuickstartProof: ${item.check}`)}`
+  ];
+  return `::warning ${properties.join(",")}::${escapeCommandData(item.message)}`;
+}
+
+function errorAnnotation(message) {
+  return `::error title=${escapeCommandProperty("QuickstartProof: configuration")}::${escapeCommandData(message)}`;
+}
+
+module.exports = { escapeCommandData, escapeCommandProperty, warningAnnotation, errorAnnotation };
+
+},
 "./paths": function(module, exports, require) {
 "use strict";
 
 const fs = require("node:fs");
 const path = require("node:path");
 const limits = require("./limits");
+
+const DISCOVERY_NAMES = Object.freeze({
+  Quickstart: /^(?:quickstart|getting-started)\.(?:md|mdx)$/i,
+  OpenAPI: /^(?:openapi|swagger)\.(?:json|ya?ml)$/i
+});
+
+const IGNORED_DISCOVERY_DIRECTORIES = new Set([
+  ".git", ".hg", ".svn", ".cache", ".next", "build", "coverage", "dist", "node_modules", "vendor"
+]);
 
 function validateRepositoryPath(value, kind) {
   if (typeof value !== "string") throw new Error(`${kind} path is required`);
@@ -1036,15 +1086,28 @@ function validateRepositoryPath(value, kind) {
   return candidate;
 }
 
-function readBoundedRepositoryFile(workspace, inputPath, kind) {
+function assertNoSymlinkComponents(root, repositoryPath, kind) {
+  let current = root;
+  for (const part of repositoryPath.split("/")) {
+    current = path.join(current, part);
+    if (fs.lstatSync(current).isSymbolicLink()) throw new Error(`${kind} discovered path cannot contain symlinks`);
+  }
+}
+
+function escapesRepository(relative) {
+  return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+}
+
+function readBoundedRepositoryFile(workspace, inputPath, kind, options = {}) {
   const repositoryPath = validateRepositoryPath(inputPath, kind);
   const root = fs.realpathSync(workspace);
   const absolute = path.resolve(root, ...repositoryPath.split("/"));
   const relative = path.relative(root, absolute);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(`${kind} path escapes the repository`);
+  if (!relative || escapesRepository(relative)) throw new Error(`${kind} path escapes the repository`);
+  if (options.rejectSymlinks) assertNoSymlinkComponents(root, repositoryPath, kind);
   const real = fs.realpathSync(absolute);
   const realRelative = path.relative(root, real);
-  if (realRelative.startsWith("..") || path.isAbsolute(realRelative)) throw new Error(`${kind} symlink escapes the repository`);
+  if (escapesRepository(realRelative)) throw new Error(`${kind} symlink escapes the repository`);
   const stat = fs.statSync(real);
   if (!stat.isFile()) throw new Error(`${kind} path must identify one file`);
   const maximum = kind === "Quickstart" ? limits.MAX_QUICKSTART_BYTES : limits.MAX_OPENAPI_BYTES;
@@ -1052,19 +1115,126 @@ function readBoundedRepositoryFile(workspace, inputPath, kind) {
   return { repositoryPath, text: fs.readFileSync(real, "utf8") };
 }
 
-module.exports = { validateRepositoryPath, readBoundedRepositoryFile };
+function discoveryKind(fileName) {
+  for (const [kind, pattern] of Object.entries(DISCOVERY_NAMES)) {
+    if (pattern.test(fileName)) return kind;
+  }
+  return null;
+}
+
+function tightenedLimit(value, maximum) {
+  return Number.isInteger(value) && value > 0 ? Math.min(value, maximum) : maximum;
+}
+
+function discoverRepositoryPaths(workspace, requestedKinds, overrides = {}) {
+  const kinds = new Set(requestedKinds);
+  if (kinds.size === 0 || [...kinds].some((kind) => !DISCOVERY_NAMES[kind])) throw new Error("Discovery requires Quickstart and/or OpenAPI");
+  const maximumDepth = tightenedLimit(overrides.maxDepth, limits.MAX_DISCOVERY_DEPTH);
+  const maximumEntries = tightenedLimit(overrides.maxEntries, limits.MAX_DISCOVERY_ENTRIES);
+  const maximumFiles = tightenedLimit(overrides.maxFiles, limits.MAX_DISCOVERY_FILES);
+  const root = fs.realpathSync(workspace);
+  if (!fs.statSync(root).isDirectory()) throw new Error("GITHUB_WORKSPACE must identify a directory");
+  const found = Object.fromEntries([...kinds].map((kind) => [kind, []]));
+  const queue = [{ absolute: root, repositoryPath: "", depth: 0 }];
+  let queueIndex = 0;
+  let entriesSeen = 0;
+  let filesSeen = 0;
+
+  while (queueIndex < queue.length) {
+    const directory = queue[queueIndex];
+    queueIndex += 1;
+    const entries = [];
+    const handle = fs.opendirSync(directory.absolute);
+    try {
+      let entry;
+      while ((entry = handle.readSync()) !== null) {
+        entriesSeen += 1;
+        if (entriesSeen > maximumEntries) throw new Error(`Path discovery exceeded its ${maximumEntries}-entry traversal limit; configure exact paths`);
+        entries.push(entry);
+      }
+    } finally {
+      handle.closeSync();
+    }
+    entries.sort((left, right) => left.name.localeCompare(right.name, "en"));
+    for (const entry of entries) {
+      const repositoryPath = directory.repositoryPath ? `${directory.repositoryPath}/${entry.name}` : entry.name;
+      const candidateKind = discoveryKind(entry.name);
+      const absolute = path.join(directory.absolute, entry.name);
+
+      if (entry.isSymbolicLink()) {
+        if (candidateKind && kinds.has(candidateKind)) throw new Error(`${candidateKind} discovery refuses a symlink candidate; configure an exact regular-file path`);
+        continue;
+      }
+      if (entry.isDirectory()) {
+        if (IGNORED_DISCOVERY_DIRECTORIES.has(entry.name.toLowerCase())) continue;
+        if (directory.depth >= maximumDepth) throw new Error(`Path discovery exceeded its ${maximumDepth}-directory depth limit; configure exact paths`);
+        queue.push({ absolute, repositoryPath, depth: directory.depth + 1 });
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      filesSeen += 1;
+      if (filesSeen > maximumFiles) throw new Error(`Path discovery exceeded its ${maximumFiles}-file limit; configure exact paths`);
+      if (!candidateKind || !kinds.has(candidateKind)) continue;
+      const repositoryCandidate = validateRepositoryPath(repositoryPath, candidateKind);
+      const maximum = candidateKind === "Quickstart" ? limits.MAX_QUICKSTART_BYTES : limits.MAX_OPENAPI_BYTES;
+      if (fs.statSync(absolute).size > maximum) throw new Error(`${candidateKind} discovery candidate exceeds the bounded size limit`);
+      found[candidateKind].push(repositoryCandidate);
+      if (found[candidateKind].length > 1) throw new Error(`${candidateKind} discovery found multiple candidates; configure one exact path`);
+    }
+  }
+
+  for (const kind of kinds) {
+    if (found[kind].length !== 1) throw new Error(`${kind} discovery found no canonical candidate; configure one exact path`);
+  }
+  return Object.fromEntries([...kinds].map((kind) => [kind, found[kind][0]]));
+}
+
+function resolveRepositoryInputs(workspace, quickstartPath, openapiPath, discoverPaths) {
+  const quickstartProvided = typeof quickstartPath === "string" && quickstartPath.trim() !== "";
+  const openapiProvided = typeof openapiPath === "string" && openapiPath.trim() !== "";
+  const missingKinds = [];
+  if (!quickstartProvided) missingKinds.push("Quickstart");
+  if (!openapiProvided) missingKinds.push("OpenAPI");
+  if (missingKinds.length > 0 && discoverPaths !== true) {
+    throw new Error(`${missingKinds.join(" and ")} path${missingKinds.length > 1 ? "s are" : " is"} required unless discover-paths is true`);
+  }
+  const discovered = missingKinds.length > 0 ? discoverRepositoryPaths(workspace, missingKinds) : {};
+  return {
+    quickstartPath: quickstartProvided ? quickstartPath : discovered.Quickstart,
+    openapiPath: openapiProvided ? openapiPath : discovered.OpenAPI,
+    quickstartDiscovered: !quickstartProvided,
+    openapiDiscovered: !openapiProvided
+  };
+}
+
+module.exports = {
+  validateRepositoryPath,
+  readBoundedRepositoryFile,
+  discoverRepositoryPaths,
+  resolveRepositoryInputs
+};
 
 },
 "./core": function(module, exports, require) {
 "use strict";
 
 const { compare } = require("./matcher");
-const { readBoundedRepositoryFile } = require("./paths");
+const { readBoundedRepositoryFile, resolveRepositoryInputs } = require("./paths");
 const { renderMarkdown } = require("./renderer");
 
 function checkRepository(options) {
-  const quickstart = readBoundedRepositoryFile(options.workspace, options.quickstartPath, "Quickstart");
-  const openapi = readBoundedRepositoryFile(options.workspace, options.openapiPath, "OpenAPI");
+  const selected = resolveRepositoryInputs(
+    options.workspace,
+    options.quickstartPath,
+    options.openapiPath,
+    options.discoverPaths === true
+  );
+  const quickstart = readBoundedRepositoryFile(options.workspace, selected.quickstartPath, "Quickstart", {
+    rejectSymlinks: selected.quickstartDiscovered
+  });
+  const openapi = readBoundedRepositoryFile(options.workspace, selected.openapiPath, "OpenAPI", {
+    rejectSymlinks: selected.openapiDiscovered
+  });
   const result = compare(quickstart.text, openapi.text, {
     quickstartPath: quickstart.repositoryPath,
     openapiPath: openapi.repositoryPath
@@ -1086,6 +1256,7 @@ const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
 const { checkRepository } = require("./core");
+const { warningAnnotation, errorAnnotation } = require("./commands");
 const { clean } = require("./evidence");
 
 function input(name, fallback = "") {
@@ -1113,19 +1284,15 @@ function booleanInput(name, fallback) {
   return value === "true";
 }
 
-function annotation(item) {
-  if (item.kind !== "mismatch" || !item.source.line) return;
-  const safe = (value) => String(value).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").replace(/:/g, "%3A").replace(/,/g, "%2C");
-  process.stdout.write(`::warning file=${safe(item.source.file)},line=${item.source.line},title=QuickstartProof ${safe(item.check)}::${safe(item.message)}\n`);
-}
-
 function run() {
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
   const failOnChanges = booleanInput("fail-on-changes", "false");
+  const discoverPaths = booleanInput("discover-paths", "false");
   const checked = checkRepository({
     workspace,
     quickstartPath: input("quickstart-path"),
     openapiPath: input("openapi-path"),
+    discoverPaths,
     repository: process.env.GITHUB_REPOSITORY || "",
     sha: process.env.GITHUB_SHA || ""
   });
@@ -1138,7 +1305,10 @@ function run() {
   const resultFile = path.join(resultDirectory, "result.json");
   fs.writeFileSync(resultFile, `${JSON.stringify(checked.result, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
   appendCommandFile(process.env.GITHUB_STEP_SUMMARY, checked.markdown);
-  checked.result.evidence.forEach(annotation);
+  for (const item of checked.result.evidence) {
+    const annotation = warningAnnotation(item);
+    if (annotation) process.stdout.write(`${annotation}\n`);
+  }
   setOutput("state", checked.result.state);
   setOutput("result-json", serialized);
   setOutput("result-file", resultFile);
@@ -1148,7 +1318,7 @@ function run() {
 
 try { run(); } catch (error) {
   const message = clean(error?.message || "QuickstartProof could not complete", 300);
-  process.stderr.write(`::error title=QuickstartProof configuration::${message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}\n`);
+  process.stderr.write(`${errorAnnotation(message)}\n`);
   process.exitCode = 1;
 }
 

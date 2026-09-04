@@ -5,6 +5,7 @@ const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
 const { checkRepository } = require("./core");
+const { warningAnnotation, errorAnnotation } = require("./commands");
 const { clean } = require("./evidence");
 
 function input(name, fallback = "") {
@@ -32,19 +33,15 @@ function booleanInput(name, fallback) {
   return value === "true";
 }
 
-function annotation(item) {
-  if (item.kind !== "mismatch" || !item.source.line) return;
-  const safe = (value) => String(value).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").replace(/:/g, "%3A").replace(/,/g, "%2C");
-  process.stdout.write(`::warning file=${safe(item.source.file)},line=${item.source.line},title=QuickstartProof ${safe(item.check)}::${safe(item.message)}\n`);
-}
-
 function run() {
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
   const failOnChanges = booleanInput("fail-on-changes", "false");
+  const discoverPaths = booleanInput("discover-paths", "false");
   const checked = checkRepository({
     workspace,
     quickstartPath: input("quickstart-path"),
     openapiPath: input("openapi-path"),
+    discoverPaths,
     repository: process.env.GITHUB_REPOSITORY || "",
     sha: process.env.GITHUB_SHA || ""
   });
@@ -57,7 +54,10 @@ function run() {
   const resultFile = path.join(resultDirectory, "result.json");
   fs.writeFileSync(resultFile, `${JSON.stringify(checked.result, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
   appendCommandFile(process.env.GITHUB_STEP_SUMMARY, checked.markdown);
-  checked.result.evidence.forEach(annotation);
+  for (const item of checked.result.evidence) {
+    const annotation = warningAnnotation(item);
+    if (annotation) process.stdout.write(`${annotation}\n`);
+  }
   setOutput("state", checked.result.state);
   setOutput("result-json", serialized);
   setOutput("result-file", resultFile);
@@ -67,6 +67,6 @@ function run() {
 
 try { run(); } catch (error) {
   const message = clean(error?.message || "QuickstartProof could not complete", 300);
-  process.stderr.write(`::error title=QuickstartProof configuration::${message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}\n`);
+  process.stderr.write(`${errorAnnotation(message)}\n`);
   process.exitCode = 1;
 }

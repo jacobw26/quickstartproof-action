@@ -6,11 +6,15 @@ branding:
   color: blue
 inputs:
   quickstart-path:
-    description: Repository-relative path to one Markdown or MDX quickstart.
-    required: true
+    description: Repository-relative path to one Markdown or MDX quickstart. Required unless discover-paths is true.
+    required: false
   openapi-path:
-    description: Repository-relative path to one OpenAPI 3.0–3.2 JSON or YAML document.
-    required: true
+    description: Repository-relative path to one OpenAPI 3.0–3.2 JSON or YAML document. Required unless discover-paths is true.
+    required: false
+  discover-paths:
+    description: Opt in to bounded canonical-name discovery for any omitted quickstart-path or openapi-path.
+    required: false
+    default: "false"
   fail-on-changes:
     description: Set true to fail the step when high-confidence static mismatches are found.
     required: false

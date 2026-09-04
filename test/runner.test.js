@@ -77,3 +77,91 @@ test("runner rejects ambiguous boolean configuration before reading inputs or wr
   assert.match(execution.stderr, /fail-on-changes must be true or false/);
   assert.deepEqual(fs.readdirSync(fixture.runnerTemp), []);
 });
+
+test("runner discovers omitted canonical paths only after explicit opt-in", (t) => {
+  const fixture = baseFixture(t);
+  const output = path.join(fixture.root, "output.txt");
+  fs.writeFileSync(output, "");
+  const execution = spawnSync(process.execPath, [entry], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_WORKSPACE: fixture.repository,
+      RUNNER_TEMP: fixture.runnerTemp,
+      GITHUB_OUTPUT: output,
+      "INPUT_QUICKSTART-PATH": "",
+      "INPUT_OPENAPI-PATH": "",
+      "INPUT_DISCOVER-PATHS": "true",
+      "INPUT_FAIL-ON-CHANGES": "false"
+    }
+  });
+  assert.equal(execution.status, 0, execution.stderr);
+  const commandOutput = fs.readFileSync(output, "utf8");
+  const resultFile = commandOutput.match(/result-file<<([^\r\n]+)\r?\n([^\r\n]+)\r?\n\1/)?.[2];
+  assert.ok(resultFile, commandOutput);
+  assert.deepEqual(JSON.parse(fs.readFileSync(resultFile, "utf8")).inputs, {
+    quickstartPath: "quickstart.md",
+    openapiPath: "openapi.json"
+  });
+});
+
+test("runner fails closed when a path is omitted without discovery opt-in", (t) => {
+  const fixture = baseFixture(t);
+  const execution = spawnSync(process.execPath, [entry], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_WORKSPACE: fixture.repository,
+      RUNNER_TEMP: fixture.runnerTemp,
+      "INPUT_QUICKSTART-PATH": "",
+      "INPUT_OPENAPI-PATH": "openapi.json",
+      "INPUT_DISCOVER-PATHS": "false",
+      "INPUT_FAIL-ON-CHANGES": "false"
+    }
+  });
+  assert.equal(execution.status, 1);
+  assert.match(execution.stderr, /Quickstart path is required unless discover-paths is true/);
+  assert.deepEqual(fs.readdirSync(fixture.runnerTemp), []);
+});
+
+test("runner emits a native warning only for a located high-confidence mismatch", (t) => {
+  const fixture = baseFixture(t);
+  fs.writeFileSync(path.join(fixture.repository, "openapi.json"), JSON.stringify({
+    openapi: "3.1.0",
+    paths: { "/widgets": { get: { responses: { 200: { description: "ok" } } } } }
+  }));
+  const execution = spawnSync(process.execPath, [entry], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_WORKSPACE: fixture.repository,
+      RUNNER_TEMP: fixture.runnerTemp,
+      "INPUT_QUICKSTART-PATH": "quickstart.md",
+      "INPUT_OPENAPI-PATH": "openapi.json",
+      "INPUT_DISCOVER-PATHS": "false",
+      "INPUT_FAIL-ON-CHANGES": "false"
+    }
+  });
+  assert.equal(execution.status, 0, execution.stderr);
+  assert.match(execution.stdout, /::warning file=quickstart\.md,line=2,title=QuickstartProof%3A path::/);
+  assert.equal((execution.stdout.match(/::warning /g) || []).length, 1);
+});
+
+test("runner rejects an ambiguous discovery switch before traversal", (t) => {
+  const fixture = baseFixture(t);
+  const execution = spawnSync(process.execPath, [entry], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_WORKSPACE: fixture.repository,
+      RUNNER_TEMP: fixture.runnerTemp,
+      "INPUT_QUICKSTART-PATH": "",
+      "INPUT_OPENAPI-PATH": "",
+      "INPUT_DISCOVER-PATHS": "yes",
+      "INPUT_FAIL-ON-CHANGES": "false"
+    }
+  });
+  assert.equal(execution.status, 1);
+  assert.match(execution.stderr, /discover-paths must be true or false/);
+  assert.deepEqual(fs.readdirSync(fixture.runnerTemp), []);
+});
