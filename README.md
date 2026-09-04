@@ -37,15 +37,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b163ceea73d27597364c9af683
-      # Reviewed v1.0.0 release commit; update deliberately after review.
-      - uses: jacobw26/quickstartproof-action@a21ebbf59b541a9681f2b56bfc893d9b41fda3b8
+      # Reviewed v1.1.0 code commit; update deliberately after review.
+      - uses: jacobw26/quickstartproof-action@a10f954e02476e6e505c6af27034abe9078218b8
         with:
           quickstart-path: docs/quickstart.md
           openapi-path: openapi/openapi.yaml
           fail-on-changes: "false"
 ```
 
-The example pins the reviewed v1.0.0 release commit. When upgrading, inspect the target commit and replace the SHA deliberately. The checkout Action is also pinned to a full commit SHA.
+The example pins the reviewed v1.1.0 code commit. When upgrading, inspect the target commit and replace the SHA deliberately. The checkout Action is also pinned to a full commit SHA.
 
 ### Version 1.1: opt-in discovery
 
@@ -53,7 +53,7 @@ Version 1.1 keeps exact paths as the default. A caller may omit either or
 both only by setting `discover-paths: "true"`:
 
 ```yaml
-      - uses: jacobw26/quickstartproof-action@v1
+      - uses: jacobw26/quickstartproof-action@a10f954e02476e6e505c6af27034abe9078218b8
         with:
           discover-paths: "true"
           fail-on-changes: "false"
