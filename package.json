@@ -1,0 +1,22 @@
+{
+  "name": "quickstartproof-action",
+  "version": "1.0.0",
+  "description": "Static cURL/OpenAPI consistency checks for one repository quickstart.",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://quickstartproof.pages.dev/github-action",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jacobw26/quickstartproof-action.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jacobw26/quickstartproof-action/issues"
+  },
+  "type": "commonjs",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.js",
+    "check": "npm run build && npm test && node scripts/verify-dist.mjs"
+  }
+}

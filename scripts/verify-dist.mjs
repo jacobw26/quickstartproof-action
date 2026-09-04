@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createBundle } from "./bundle.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const action = await readFile(path.join(root, "action.yml"), "utf8");
+const dist = await readFile(path.join(root, "dist", "index.js"), "utf8");
+const expectedDist = await createBundle(root);
+assert.match(action, /using: node24/);
+assert.match(action, /main: dist\/index\.js/);
+assert.doesNotMatch(action, /token|secret|password|api-key/i);
+assert.doesNotMatch(dist, /\bfetch\s*\(|https?\.request|child_process|execSync|spawnSync|eval\s*\(|new Function/);
+assert.doesNotMatch(dist, /\brequire\s*\((?!["'])/, "source modules may use only literal require identifiers");
+const nativeModules = [...new Set([...dist.matchAll(/\brequire\(["'](node:[^"']+)["']\)/g)].map((match) => match[1]))].sort();
+assert.deepEqual(nativeModules, ["node:crypto", "node:fs", "node:os", "node:path"], "native module access must stay on the audited offline allowlist");
+assert.ok(Buffer.byteLength(dist) < 250_000, "release bundle must stay bounded");
+assert.equal(dist, expectedDist, "dist/index.js must exactly match the reviewed source bundle");
+process.stdout.write("Verified offline, dependency-free Node 24 release bundle and exact source parity.\n");

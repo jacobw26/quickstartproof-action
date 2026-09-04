@@ -1,0 +1,1 @@
+{"openapi":"3.0.3","servers":[{"url":"https://api.example.test/v1"}],"paths":{"/pets/{id}":{"get":{"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}},{"name":"expand","in":"query","required":true,"schema":{"type":"string"}},{"name":"x-client-id","in":"header","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"ok"}}}}}}

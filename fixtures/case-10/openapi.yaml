@@ -1,0 +1,19 @@
+openapi: 3.1.0
+servers:
+  - url: https://api.example.test/v2
+paths:
+  /pets:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["name"]
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: created

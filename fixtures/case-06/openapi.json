@@ -1,0 +1,1 @@
+{"openapi":"3.1.0","servers":[{"url":"https://api.example.test/v1"}],"paths":{"/pets":{"post":{"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["count"],"properties":{"count":{"type":"integer"}}}}}},"responses":{"201":{"description":"created"}}}}}}

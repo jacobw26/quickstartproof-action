@@ -1,0 +1,27 @@
+name: QuickstartProof — cURL/OpenAPI consistency
+description: Compare one Markdown cURL quickstart with one same-repository OpenAPI document without executing either.
+author: QuickstartProof
+branding:
+  icon: check-square
+  color: blue
+inputs:
+  quickstart-path:
+    description: Repository-relative path to one Markdown or MDX quickstart.
+    required: true
+  openapi-path:
+    description: Repository-relative path to one OpenAPI 3.0–3.2 JSON or YAML document.
+    required: true
+  fail-on-changes:
+    description: Set true to fail the step when high-confidence static mismatches are found.
+    required: false
+    default: "false"
+outputs:
+  state:
+    description: aligned-on-static-checks, changes-found, or insufficient-public-input.
+  result-json:
+    description: Bounded machine-readable evidence JSON.
+  result-file:
+    description: Path to the JSON result in RUNNER_TEMP. The repository is never modified.
+runs:
+  using: node24
+  main: dist/index.js

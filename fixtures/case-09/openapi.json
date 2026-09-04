@@ -1,0 +1,1 @@
+{"openapi":"3.0.3","paths":{"/one":{"get":{"responses":{"200":{"description":"ok"}}}},"/two":{"get":{"responses":{"200":{"description":"ok"}}}},"/three":{"get":{"responses":{"200":{"description":"ok"}}}},"/four":{"get":{"responses":{"200":{"description":"ok"}}}}}}

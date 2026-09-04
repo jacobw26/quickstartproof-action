@@ -1,0 +1,14 @@
+[
+  { "id": "case-01", "expected": "aligned-on-static-checks" },
+  { "id": "case-02", "expected": "changes-found" },
+  { "id": "case-03", "expected": "changes-found" },
+  { "id": "case-04", "expected": "changes-found" },
+  { "id": "case-05", "expected": "changes-found" },
+  { "id": "case-06", "expected": "changes-found" },
+  { "id": "case-07", "expected": "aligned-on-static-checks" },
+  { "id": "case-08", "expected": "insufficient-public-input" },
+  { "id": "case-09", "expected": "insufficient-public-input" },
+  { "id": "case-10", "expected": "aligned-on-static-checks", "openapi": "openapi.yaml" },
+  { "id": "case-11", "expected": "aligned-on-static-checks", "quickstart": "quickstart.mdx", "openapi": "openapi.yaml" },
+  { "id": "case-12", "expected": "insufficient-public-input", "trap": "qsp-should-never-exist" }
+]
