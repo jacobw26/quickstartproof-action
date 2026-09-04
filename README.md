@@ -34,15 +34,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b163ceea73d27597364c9af683
-      # Initial public install reference; pin a reviewed commit SHA for production.
-      - uses: jacobw26/quickstartproof-action@main
+      # Reviewed initial public commit; update deliberately after review.
+      - uses: jacobw26/quickstartproof-action@948e16699651237e46c265763ade14010fbcbd36
         with:
           quickstart-path: docs/quickstart.md
           openapi-path: openapi/openapi.yaml
           fail-on-changes: "false"
 ```
 
-The example temporarily uses `@main` because no immutable QuickstartProof release commit exists before the initial public push. For production, replace `@main` with a reviewed 40-character commit SHA. The checkout Action is already pinned to a full commit SHA.
+The example pins the reviewed initial public commit. When upgrading, inspect the target commit and replace the SHA deliberately. The checkout Action is also pinned to a full commit SHA.
 
 ## Inputs
 
