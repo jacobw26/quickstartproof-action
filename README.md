@@ -34,15 +34,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b163ceea73d27597364c9af683
-      # Reviewed initial public commit; update deliberately after review.
-      - uses: jacobw26/quickstartproof-action@948e16699651237e46c265763ade14010fbcbd36
+      # Reviewed v1.0.0 release commit; update deliberately after review.
+      - uses: jacobw26/quickstartproof-action@a21ebbf59b541a9681f2b56bfc893d9b41fda3b8
         with:
           quickstart-path: docs/quickstart.md
           openapi-path: openapi/openapi.yaml
           fail-on-changes: "false"
 ```
 
-The example pins the reviewed initial public commit. When upgrading, inspect the target commit and replace the SHA deliberately. The checkout Action is also pinned to a full commit SHA.
+The example pins the reviewed v1.0.0 release commit. When upgrading, inspect the target commit and replace the SHA deliberately. The checkout Action is also pinned to a full commit SHA.
 
 ## Inputs
 
@@ -71,6 +71,10 @@ npm run check
 ```
 
 `npm run build` deterministically bundles the audited CommonJS modules into `dist/index.js`; `npm run check` also requires byte-for-byte source/bundle parity and an offline native-module allowlist. The test suite covers 12 fixed synthetic fixture repositories across OpenAPI 3.0/3.1/3.2, JSON/YAML, Markdown/MDX, internal references, mismatches, ambiguous input, path containment, result bounds, and malicious-looking blocks that would create a file if executed. The trap file must never appear.
+
+## Optional human next step
+
+The Action is free and works without the service. For an accepted public-repository case, the optional [$199 Quickstart Repair Pack](https://quickstartproof.pages.dev/#fit) includes a dated discrepancy table, corrected cURL/JSON snippets, one PR-ready Markdown/MDX patch, a static validation log, an owner checklist, and one consolidated revision. Its 48-hour target starts only after written fit acceptance, complete bounded public inputs, and confirmed payment. The Action never purchases, books, or starts the service.
 
 ## License and security
 
